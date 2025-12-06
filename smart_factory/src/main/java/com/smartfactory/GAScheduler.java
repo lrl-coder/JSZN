@@ -75,7 +75,7 @@ public class GAScheduler {
                 bestSolution = currentBest; // 这里实际上需要深拷贝，简化起见直接引用
                 bestFitness = currentBest.getFitness();
                 stagnationCount = 0; // 进化了，重置停滞计数
-                System.out.printf("Generation %d: New Best Cost Found -> %.2f%n", gen, bestFitness);
+                System.out.printf("Generation %d: New Best Cost Found -> %.2f%n", gen, -bestFitness);
             } else {
                 stagnationCount++; // 没进化，计数+1
             }
@@ -789,7 +789,7 @@ public class GAScheduler {
             return new ScheduleResult(0.0, 0.0, jobs, emptyCompletionTimes);
         }
 
-        LocalDateTime planStartTime = LocalDateTime.of(2025, 11, 26, 8, 0);
+        LocalDateTime planStartTime = data.getPlanStartTime();
 
         // 初始化生产线状态
         Map<Integer, LocalDateTime> lineFreeTime = new HashMap<>();

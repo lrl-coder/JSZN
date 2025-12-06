@@ -17,22 +17,14 @@ public class Main {
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime today8AM = now.toLocalDate().atTime(8, 0);
-        LocalDateTime planStartTime;
-        
-        // 如果当前时间在8点之前，使用今天的8点
-        // 如果当前时间在8点之后，使用今天的8点（处理今天8点前到达的订单）
-        if (now.isBefore(today8AM)) {
-            planStartTime = today8AM;
-        } else {
-            planStartTime = today8AM;  // 使用今天的8点作为排程基准
-        }
+        LocalDateTime planStartTime = today8AM;  // 使用今天的8点作为排程基准;
+
         System.out.println("当前排程基准时间: " + planStartTime);
         System.out.println("说明：只处理在 " + planStartTime + " 之前(或等于)到达的订单");
 
-        // 2. 从文件加载数据 (假设文件在项目根目录下，或者 src/main/resources 下)
-        // 你可以根据实际存放路径修改这里，例如 "src/main/resources/products.csv"
-        String productFile = "products.csv";
-        String orderFile = "orders.csv";
+        // 2. 从文件加载数据
+        String productFile = "input/run/products.csv";
+        String orderFile = "input/run/orders.csv";
 
         List<Product> products = DataLoader.loadProducts(productFile);
         List<Order> allOrders = DataLoader.loadOrders(orderFile);
@@ -60,7 +52,7 @@ public class Main {
         }
 
         // 4. 构建调度数据上下文
-        ScheduleData data = new ScheduleData(products, activeOrders);
+        ScheduleData data = new ScheduleData(products, activeOrders, planStartTime);
 
         // 5. 运行遗传算法
         // 参数：种群50，交叉0.8，变异0.1，迭代100代

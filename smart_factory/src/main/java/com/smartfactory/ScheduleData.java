@@ -1,5 +1,6 @@
 package com.smartfactory;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class ScheduleData {
@@ -9,13 +10,16 @@ public class ScheduleData {
 
     private List<Product> products;
     private List<Order> orders;
+    private LocalDateTime planStartTime; // 排程基准时间
 
-    public ScheduleData(List<Product> products, List<Order> orders) {
+    public ScheduleData(List<Product> products, List<Order> orders, LocalDateTime planStartTime) {
         this.products = products;
         this.orders = orders;
+        this.planStartTime = planStartTime;
     }
 
     // Getters
     public List<Product> getProducts() { return products; }
     public List<Order> getOrders() { return orders; }
+    public LocalDateTime getPlanStartTime() { return planStartTime; }
 }
