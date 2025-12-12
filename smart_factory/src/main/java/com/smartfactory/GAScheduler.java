@@ -30,13 +30,14 @@ public class GAScheduler {
     /**
      * 遗传算法主入口
      */
+    // 在 GAScheduler.java 中替换 run() 方法
+
     public Chromosome run() {
         // 检查是否有订单需要处理
         if (data.getOrders().isEmpty()) {
-            // 返回一个空的染色体
             return new Chromosome(new ArrayList<>(), new ArrayList<>());
         }
-        
+
         // 1. 初始化种群
         List<Chromosome> population = initializePopulation();
 
@@ -45,14 +46,19 @@ public class GAScheduler {
 
         Chromosome bestSolution = getBest(population);
         if (bestSolution == null) {
-            // 如果种群为空，返回一个空的染色体
             return new Chromosome(new ArrayList<>(), new ArrayList<>());
         }
+
+        // 【修复步骤 1】初始最佳解也要深拷贝 (Deep Copy)
         double bestFitness = bestSolution.getFitness();
+        bestSolution = new Chromosome(
+                new ArrayList<>(bestSolution.getOperationSequence()),
+                new ArrayList<>(bestSolution.getMachineAssignment())
+        );
+        bestSolution.setFitness(bestFitness);
 
         for (int gen = 0; gen < maxGenerations; gen++) {
 
-            // --- [改进点 1: 自适应参数控制] ---
             adjustMutationRate();
 
             // 2. 选择
@@ -64,23 +70,28 @@ public class GAScheduler {
             // 4. 评估新种群
             evaluatePopulationFitness(newPopulation);
 
-            // --- [改进点 2: 混合算法 - 引入局部搜索] ---
-            // 仅对新种群中最好的前 5% 个体进行微调（避免计算量过大）
-            // 这就是所谓的 Memetic Algorithm 或 GA-LocalSearch 混合
+            // 局部搜索 (这步会修改个体，所以必须保证 bestSolution 是独立的备份)
             performLocalSearchOnElites(newPopulation);
 
             // 更新全局最优解
             Chromosome currentBest = getBest(newPopulation);
             if (currentBest.getFitness() < bestFitness) {
-                bestSolution = currentBest; // 这里实际上需要深拷贝，简化起见直接引用
+                // 【修复步骤 2】发现新解时，执行深拷贝！
+                // 这样无论后续 currentBest 怎么变差，bestSolution 都永远保持巅峰状态
                 bestFitness = currentBest.getFitness();
-                stagnationCount = 0; // 进化了，重置停滞计数
+                bestSolution = new Chromosome(
+                        new ArrayList<>(currentBest.getOperationSequence()),
+                        new ArrayList<>(currentBest.getMachineAssignment())
+                );
+                bestSolution.setFitness(bestFitness);
+
+                stagnationCount = 0;
                 System.out.printf("Generation %d: New Best Cost Found -> %.2f%n", gen, -bestFitness);
             } else {
-                stagnationCount++; // 没进化，计数+1
+                stagnationCount++;
             }
 
-            // 简单的日志，每10代或者发现新解时打印
+            // 日志
             if (gen % 10 == 0 || stagnationCount == 0) {
                 System.out.println("Generation " + gen + " Best: " + -bestFitness + " (Mutation Rate: " + String.format("%.2f", mutationRate) + ")");
             }
@@ -822,11 +833,11 @@ public class GAScheduler {
         Map<String, Boolean> isLastPieceOfOrder = new HashMap<>();
         Map<Integer, Integer> orderPieceCount = new HashMap<>();
         Map<Integer, Integer> orderTotalPieces = new HashMap<>();
-        
+
         for (Order order : data.getOrders()) {
             orderTotalPieces.put(order.getId(), order.getQuantity());
         }
-        
+
         // 标记每个工件是否是订单的最后一个
         for (int i = 0; i < opSequence.size(); i++) {
             String opId = opSequence.get(i);
@@ -835,7 +846,7 @@ public class GAScheduler {
             orderPieceCount.put(orderId, currentCount);
             isLastPieceOfOrder.put(opId, currentCount == orderTotalPieces.get(orderId));
         }
-        
+
         // 构建尾数工件索引列表（同一产品的尾数工件，且加工时间 < 4小时）
         Map<Integer, List<Integer>> tailPieceIndicesByProduct = new HashMap<>(); // 产品ID -> 尾数工件索引列表
         for (int i = 0; i < opSequence.size(); i++) {
@@ -843,35 +854,36 @@ public class GAScheduler {
             if (isLastPieceOfOrder.getOrDefault(opId, false)) {
                 int orderId = Integer.parseInt(opId.split("_")[0].substring(1));
                 Order order = data.getOrders().stream()
-                    .filter(o -> o.getId() == orderId).findFirst().get();
+                        .filter(o -> o.getId() == orderId).findFirst().get();
                 int productId = order.getProductId();
                 Product product = data.getProducts().stream()
-                    .filter(p -> p.getId() == productId).findFirst().get();
-                
+                        .filter(p -> p.getId() == productId).findFirst().get();
+
                 if (product.getUnitProcessingTime() < 4.0) {
                     tailPieceIndicesByProduct.computeIfAbsent(productId, k -> new ArrayList<>()).add(i);
                 }
             }
         }
-        
+
         // ========== 主调度循环 ==========
         // 记录已合并的尾数工件索引（避免重复合并）
         Set<Integer> mergedTailIndices = new HashSet<>();
-        
+
         for (int i = 0; i < opSequence.size(); i++) {
+            // 【修复核心】：如果当前工件已经被之前的工件合并处理了，直接跳过！
+            if (mergedTailIndices.contains(i)) {
+                continue;
+            }
+
             String opId = opSequence.get(i);
             int lineId = assignment.get(i);  // 使用染色体中指定的生产线
-            
-            // ========== 关键改进：不跳过任何工件 ==========
-            // 即使这个工件已经被合并处理，也要为它生成Job
-            // 只是Job的时间信息会与合并的主工件相同
-            
+
             int orderId = Integer.parseInt(opId.split("_")[0].substring(1));
             Order order = data.getOrders().stream()
-                .filter(o -> o.getId() == orderId).findFirst().get();
+                    .filter(o -> o.getId() == orderId).findFirst().get();
             int productId = order.getProductId();
             Product product = data.getProducts().stream()
-                .filter(p -> p.getId() == productId).findFirst().get();
+                    .filter(p -> p.getId() == productId).findFirst().get();
             double durationHours = product.getUnitProcessingTime();
             long durationSeconds = (long)(durationHours * 3600);
 
@@ -881,47 +893,47 @@ public class GAScheduler {
 
             LocalDateTime startTime, endTime;
             double jobCost = 0.0;
-            
+
             // ========== 主动尾数拼单逻辑 ==========
-            boolean isTailPiece = isLastPieceOfOrder.getOrDefault(opId, false) && 
-                                  durationHours < 4.0 &&
-                                  !mergedTailIndices.contains(i);
-            
+            boolean isTailPiece = isLastPieceOfOrder.getOrDefault(opId, false) &&
+                    durationHours < 4.0;
+
             List<Integer> mergedIndices = new ArrayList<>(); // 记录合并的工件索引
             mergedIndices.add(i);
             double totalMergedHours = durationHours;
-            
+
             if (isTailPiece) {
                 // 尝试寻找其他可以合并的尾数工件（同一产品，且总时间 <= 4小时）
                 List<Integer> availableTailIndices = tailPieceIndicesByProduct.getOrDefault(productId, new ArrayList<>());
-                
+
                 for (int otherIndex : availableTailIndices) {
+                    // 跳过自己和已经合并过的
                     if (otherIndex == i || mergedTailIndices.contains(otherIndex)) {
                         continue;
                     }
-                    
+
                     // 关键：检查另一个工件是否也在同一生产线（使用染色体中的分配）
                     int otherLineId = assignment.get(otherIndex);
-                    
+
                     // 如果另一个工件在同一生产线，可以合并
                     if (otherLineId == lineId) {
                         String otherOpId = opSequence.get(otherIndex);
                         int otherOrderId = Integer.parseInt(otherOpId.split("_")[0].substring(1));
                         Order otherOrder = data.getOrders().stream()
-                            .filter(o -> o.getId() == otherOrderId).findFirst().get();
+                                .filter(o -> o.getId() == otherOrderId).findFirst().get();
                         Product otherProduct = data.getProducts().stream()
-                            .filter(p -> p.getId() == otherOrder.getProductId()).findFirst().get();
+                                .filter(p -> p.getId() == otherOrder.getProductId()).findFirst().get();
                         double otherDurationHours = otherProduct.getUnitProcessingTime();
-                        
+
                         // 如果合并后总时间 <= 4小时，可以合并
                         if (totalMergedHours + otherDurationHours <= 4.0) {
                             mergedIndices.add(otherIndex);
                             totalMergedHours += otherDurationHours;
-                            mergedTailIndices.add(otherIndex);
+                            mergedTailIndices.add(otherIndex); // 标记该工件已被处理，后续循环会跳过它
                         }
                     }
                 }
-                
+
                 // 如果成功合并了多个尾数工件，使用合并后的总时间
                 if (mergedIndices.size() > 1) {
                     durationSeconds = (long)(totalMergedHours * 3600);
@@ -961,30 +973,24 @@ public class GAScheduler {
                 String mergedOpId = opSequence.get(mergedIndex);
                 int mergedOrderId = Integer.parseInt(mergedOpId.split("_")[0].substring(1));
                 int mergedLineId = assignment.get(mergedIndex);  // 使用染色体中的分配
-                
+
                 // 只有第一个工件承担成本，其他工件成本为0（因为是合并的）
                 double mergedJobCost = (mergedIndex == i) ? jobCost : 0.0;
-                
+
                 Job job = new Job(mergedOpId, productId, mergedLineId, startTime, endTime,
                         TimeCostUtil.getCostCoefficient(startTime), mergedJobCost);
                 jobs.add(job);
-                
+
                 // 记录订单完成
-                if (orderProgress.get(mergedOrderId).incrementAndGet() == 
-                    data.getOrders().stream().filter(o -> o.getId() == mergedOrderId)
-                        .findFirst().get().getQuantity()) {
+                if (orderProgress.get(mergedOrderId).incrementAndGet() ==
+                        data.getOrders().stream().filter(o -> o.getId() == mergedOrderId)
+                                .findFirst().get().getQuantity()) {
                     orderCompletionTime.put(mergedOrderId, endTime);
                 }
-            }
-            
-            // 标记当前工件已处理（如果是尾数合并的一部分）
-            if (mergedIndices.size() > 1) {
-                mergedTailIndices.add(i);
             }
         }
 
         // 计算罚款
-        // 根据作业条件：合同的截止时间均是指截止日期的当天早上8点
         double penalty = 0.0;
         for (Order o : data.getOrders()) {
             LocalDateTime finish = orderCompletionTime.get(o.getId());
@@ -998,11 +1004,11 @@ public class GAScheduler {
         double totalRevenue = data.getOrders().stream()
                 .mapToDouble(Order::getTotalValue)
                 .sum();
-        
+
         // 计算利润 = 总收入 - 生产成本 - 罚款
         double profit = totalRevenue - totalProductionCost - penalty;
-        
-        // 注意：适应度值越小越好，所以返回负利润作为"利润"
+
+        // 注意：适应度值越小越好，所以返回负利润作为"成本"
         return new ScheduleResult(-profit, penalty, jobs, orderCompletionTime);
     }
 

@@ -64,7 +64,7 @@ public class Main {
         System.out.println("\n--- 优化完成 ---");
         if (bestSolution != null) {
             GAScheduler.ScheduleResult result = scheduler.getDetailedSchedule(bestSolution);
-            System.out.println("最佳方案总利润 (含罚款): " + result.totalCost);
+            System.out.println("最佳方案总利润 (含罚款): " + -result.totalCost);
 
             System.out.println("其中包含罚款总额: " + result.totalPenalty); // 显示总罚款
 
