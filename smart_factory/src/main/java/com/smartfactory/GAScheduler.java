@@ -194,7 +194,7 @@ public class GAScheduler {
     }
 
     /**
-     * 适应度评估：根据染色体计算调度，并计算总成本 (重点函数)
+     * 适应度评估：根据染色体计算调度，并计算总利润 (重点函数)
      */
     private void evaluatePopulationFitness(List<Chromosome> population) {
         for (Chromosome c : population) {
@@ -226,13 +226,19 @@ public class GAScheduler {
         List<Integer> bestMa = new ArrayList<>(c.getMachineAssignment());
         List<String> bestOs = new ArrayList<>(c.getOperationSequence());
 
+        // 为了防止极个别情况下的死循环，增加一个内层最大迭代次数限制
+        int maxInnerLoopSteps = 100;
+
         // --- 2. 主循环 (SA 退火过程) ---
         while (temperature > minTemperature) {
             int k = 1;
             int maxK = 3; // 定义3种邻域结构
+            int loopCount = 0; // 安全计数器
 
             // VNS 循环：在当前温度下，尝试不同的邻域
-            while (k <= maxK) {
+            while (k <= maxK && loopCount < maxInnerLoopSteps) {
+                loopCount++;
+
                 // 备份当前状态 (用于回滚)
                 List<Integer> currentMa = new ArrayList<>(c.getMachineAssignment());
                 List<String> currentOs = new ArrayList<>(c.getOperationSequence());
@@ -250,13 +256,14 @@ public class GAScheduler {
                 boolean isAspiration = (newCost < globalBestCost); // 渴望准则：打破历史最优
 
                 boolean accept = false;
+                boolean isImprovement = (delta < 0); // 是否是真的变好了
 
                 if (isTabu && !isAspiration) {
-                    // 1. 命中禁忌且未满足渴望准则 -> 强制拒绝 (尽管 SA 可能会接受，但 TS 说不行)
+                    // 1. 命中禁忌且未满足渴望准则 -> 强制拒绝
                     accept = false;
                 } else {
                     // 2. 非禁忌，或者满足渴望准则 -> 进入 SA 判断
-                    if (delta < 0) {
+                    if (isImprovement) {
                         accept = true; // 更好，直接接受
                     } else {
                         // 更差，按 Metropolis 准则概率接受
@@ -284,9 +291,13 @@ public class GAScheduler {
                         tabuList.poll();
                     }
 
-                    // VNS 策略：如果找到了改进(或被SA接受的移动)，回到第一个邻域继续深挖 (Exploitation)
-                    // 也可以选择 k 不变，或者 k=1。这里选择 k=1 以强化局部搜索能力。
-                    k = 1;
+                    // 【修复核心】：只有在真正变好 (Exploitation) 时才重置 k=1
+                    // 如果只是接受了差解 (Exploration)，不要重置 k，否则高温下无法跳出循环
+                    if (isImprovement) {
+                        k = 1;
+                    } else {
+                        k++; // 接受了差解，继续尝试下一个邻域，推动流程
+                    }
                 } else {
                     // 拒绝新解：回滚
                     Collections.copy(c.getMachineAssignment(), currentMa);
@@ -298,12 +309,11 @@ public class GAScheduler {
                 }
             }
 
-            // 降温
+            // 降温 (现在内层循环一定会结束，这里终于可以执行到了)
             temperature *= coolingRate;
         }
 
         // --- 3. 收尾：恢复历史最优 ---
-        // 防止 SA/VNS 在最后阶段停留在一个较差的解
         c.setFitness(globalBestCost);
         Collections.copy(c.getMachineAssignment(), bestMa);
         Collections.copy(c.getOperationSequence(), bestOs);
@@ -992,7 +1002,7 @@ public class GAScheduler {
         // 计算利润 = 总收入 - 生产成本 - 罚款
         double profit = totalRevenue - totalProductionCost - penalty;
         
-        // 注意：适应度值越小越好，所以返回负利润作为"成本"
+        // 注意：适应度值越小越好，所以返回负利润作为"利润"
         return new ScheduleResult(-profit, penalty, jobs, orderCompletionTime);
     }
 

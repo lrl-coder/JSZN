@@ -1,6 +1,7 @@
 package com.smartfactory;
 
 import com.smartfactory.util.DataLoader;
+import com.smartfactory.util.HtmlGanttRenderer;
 import com.smartfactory.util.Job;
 import com.smartfactory.util.TimeCostUtil;
 
@@ -55,15 +56,15 @@ public class Main {
         ScheduleData data = new ScheduleData(products, activeOrders, planStartTime);
 
         // 5. 运行遗传算法
-        // 参数：种群50，交叉0.8，变异0.1，迭代100代
-        GAScheduler scheduler = new GAScheduler(data, 50, 0.8, 0.1, 100);
+        // 参数：种群50，交叉0.8，变异0.2，迭代100代
+        GAScheduler scheduler = new GAScheduler(data, 200, 0.8, 0.2, 300);
         Chromosome bestSolution = scheduler.run();
 
         // 6. 输出结果
         System.out.println("\n--- 优化完成 ---");
         if (bestSolution != null) {
             GAScheduler.ScheduleResult result = scheduler.getDetailedSchedule(bestSolution);
-            System.out.println("最佳方案总成本 (含罚款): " + result.totalCost);
+            System.out.println("最佳方案总利润 (含罚款): " + result.totalCost);
 
             System.out.println("其中包含罚款总额: " + result.totalPenalty); // 显示总罚款
 
@@ -72,6 +73,11 @@ public class Main {
 
             // 简单的文本可视化
             printSchedule(result.scheduledJobs);
+
+            // 【新增】生成 HTML 甘特图
+            HtmlGanttRenderer.generate(result, activeOrders, products, "schedule_report.html");
+
+            System.out.println("请使用浏览器打开 schedule_report.html 查看可视化结果。");
         }
     }
 
